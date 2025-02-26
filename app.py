@@ -4,12 +4,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 from datetime import timedelta
 from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # JWT配置
-app.config['JWT_SECRET_KEY'] = 'your-secret-key'
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
@@ -18,8 +23,8 @@ app.config['JWT_HEADER_TYPE'] = 'Bearer'
 jwt = JWTManager(app)
 
 # Supabase 配置
-SUPABASE_URL = "https://bwfjfgisqshegxatwctb.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3ZmpmZ2lzcXNoZWd4YXR3Y3RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA1Njg5NzEsImV4cCI6MjA1NjE0NDk3MX0.64RJOyjnDa9hjvqOg2nnho2HKPFSylHeseBfe6RthAo"
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.route('/')
