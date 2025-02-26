@@ -1,6 +1,6 @@
-Flask==3.0.0
-flask-jwt-extended==4.6.0
-flask-cors==4.0.0
-python-dotenv==1.0.0
-supabase==2.0.3
-Werkzeug==3.0.1
+Flask
+flask-jwt-extended
+flask-cors
+python-dotenv
+supabase
+Werkzeug
