@@ -56,12 +56,15 @@ def dashboard_data():
 
 # 认证检查 API 路由
 @app.route('/api/check-auth')
-@jwt_required()  # 需要 JWT 认证
+@jwt_required()
 def check_auth():
-    current_user = get_jwt_identity()  # 获取当前用户身份
-    if current_user != 'admin':  # 验证是否为管理员
-        return jsonify({"msg": "Unauthorized"}), 403
-    return jsonify({"msg": "Authorized", "user": current_user}), 200
+    current_user = get_jwt_identity()
+    # 移除管理员检查，允许所有有效token的用户访问
+    return jsonify({
+        "msg": "Authorized", 
+        "user": current_user,
+        "is_admin": current_user == 'admin'
+    }), 200
 
 # 创建管理员账户路由
 @app.route('/create-admin', methods=['POST'])
@@ -138,6 +141,89 @@ def delete_admin():
     # 从数据库中删除管理员账户
     result = supabase.table('users').delete().eq('username', 'admin').execute()
     return jsonify({"msg": "Admin user deleted successfully"}), 200
+
+# 用户管理 API 路由
+@app.route('/api/users', methods=['GET'])
+@jwt_required()
+def get_users():
+    current_user = get_jwt_identity()
+    if current_user != 'admin':
+        return jsonify({"msg": "Unauthorized"}), 403
+    
+    # 获取所有用户列表，但不返回密码信息
+    users = supabase.table('users').select('username,is_admin').execute()
+    return jsonify(users.data), 200
+
+@app.route('/api/users', methods=['POST'])
+@jwt_required()
+def create_user():
+    current_user = get_jwt_identity()
+    if current_user != 'admin':
+        return jsonify({"msg": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    is_admin = data.get('is_admin', False)
+    
+    if not username or not password:
+        return jsonify({"msg": "Missing username or password"}), 400
+    
+    # 检查用户是否已存在
+    user_query = supabase.table('users').select('*').eq('username', username).execute()
+    if len(user_query.data) > 0:
+        return jsonify({"msg": "Username already exists"}), 400
+    
+    # 生成密码哈希
+    hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+    # 创建新用户
+    new_user = {
+        'username': username,
+        'password': hashed_password,  # 确保使用哈希后的密码
+        'is_admin': is_admin
+    }
+    
+    try:
+        supabase.table('users').insert(new_user).execute()
+        return jsonify({"msg": "User created successfully"}), 201
+    except Exception as e:
+        print(f"Error creating user: {e}")  # 添加错误日志
+        return jsonify({"msg": "Error creating user"}), 500
+
+@app.route('/api/users/<username>', methods=['DELETE'])
+@jwt_required()
+def delete_user(username):
+    current_user = get_jwt_identity()
+    if current_user != 'admin':
+        return jsonify({"msg": "Unauthorized"}), 403
+    
+    if username == 'admin':
+        return jsonify({"msg": "Cannot delete admin user"}), 400
+    
+    result = supabase.table('users').delete().eq('username', username).execute()
+    return jsonify({"msg": "User deleted successfully"}), 200
+
+@app.route('/api/users/<username>/password', methods=['PUT'])
+@jwt_required()
+def update_user_password(username):
+    current_user = get_jwt_identity()
+    if current_user != 'admin':
+        return jsonify({"msg": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    new_password = data.get('password')
+    
+    if not new_password:
+        return jsonify({"msg": "Missing new password"}), 400
+    
+    hashed_password = generate_password_hash(new_password, method='pbkdf2:sha256')
+    supabase.table('users').update({"password": hashed_password}).eq('username', username).execute()
+    
+    return jsonify({"msg": "Password updated successfully"}), 200
+
+@app.route('/users')
+def users_page():
+    return render_template('users.html')
 
 # 应用入口点
 if __name__ == '__main__':

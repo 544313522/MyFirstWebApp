@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>用户管理</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>用户管理</h2>
+        
+        <!-- 创建用户表单 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                添加新用户
+            </div>
+            <div class="card-body">
+                <form id="createUserForm">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" class="form-control" id="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" class="form-control" id="password" required>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="isAdmin">
+                        <label class="form-check-label">管理员权限</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">创建用户</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="card">
+            <div class="card-header">
+                用户列表
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>用户名</th>
+                            <th>角色</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userList">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 检查认证状态
+        fetch('/api/check-auth', {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                window.location.href = '/';
+            }
+        });
+
+        // 加载用户列表
+        function loadUsers() {
+            fetch('/api/users', {
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                }
+            })
+            .then(response => response.json())
+            .then(users => {
+                const userList = document.getElementById('userList');
+                userList.innerHTML = '';
+                users.forEach(user => {
+                    userList.innerHTML += `
+                        <tr>
+                            <td>${user.username}</td>
+                            <td>${user.is_admin ? '管理员' : '普通用户'}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">重置密码</button>
+                                ${user.username !== 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')">删除</button>` : ''}
+                            </td>
+                        </tr>
+                    `;
+                });
+            });
+        }
+
+        // 创建用户
+        document.getElementById('createUserForm').onsubmit = function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const isAdmin = document.getElementById('isAdmin').checked;
+
+            fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                },
+                body: JSON.stringify({ username, password, is_admin: isAdmin })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.msg);
+                if (data.msg === 'User created successfully') {
+                    loadUsers();
+                    document.getElementById('createUserForm').reset();
+                }
+            });
+        };
+
+        // 删除用户
+        function deleteUser(username) {
+            if (confirm(`确定要删除用户 ${username} 吗？`)) {
+                fetch(`/api/users/${username}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.msg);
+                    loadUsers();
+                });
+            }
+        }
+
+        // 重置密码
+        function resetPassword(username) {
+            const newPassword = prompt(`请输入 ${username} 的新密码：`);
+            if (newPassword) {
+                fetch(`/api/users/${username}/password`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    },
+                    body: JSON.stringify({ password: newPassword })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.msg);
+                });
+            }
+        }
+
+        // 初始加载用户列表
+        loadUsers();
+    </script>
+</body>
+</html>

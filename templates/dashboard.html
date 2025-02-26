@@ -1,132 +1,270 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>管理面板</title>
-    <!-- 添加 axios -->
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <title>仪表板</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
+        .sidebar {
+            min-height: 100vh;
+            background-color: #f8f9fa;
             padding: 20px;
-            background-color: #f5f5f5;
+            border-right: 1px solid #dee2e6;
         }
-        .dashboard-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
+        .nav-link {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        .nav-link:hover {
+            color: #007bff;
+        }
+        .nav-link.active {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .content-area {
             padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .tag {
-            display: inline-block;
-            padding: 5px 10px;
-            background-color: #007bff;
-            color: white;
-            border-radius: 3px;
-            margin-right: 10px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .logout-btn {
-            padding: 8px 15px;
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .logout-btn:hover {
-            background-color: #c82333;
         }
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <div class="header">
-            <h1>管理面板</h1>
-            <button class="logout-btn" onclick="logout()">退出登录</button>
-        </div>
-        <div>
-            <span class="tag">admin</span>
-        </div>
-        <div id="content">
-            <!-- 未来这里会添加用户管理功能 -->
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 侧边栏 -->
+            <div class="col-md-2 sidebar">
+                <h4 class="mb-4">功能菜单</h4>
+                <div class="nav flex-column" id="sidebarMenu">
+                    <!-- 菜单项将通过 JavaScript 动态加载 -->
+                </div>
+            </div>
+
+            <!-- 主要内容区域 -->
+            <div class="col-md-10 content-area">
+                <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+                    <span class="navbar-brand">欢迎回来</span>
+                    <div class="navbar-nav ml-auto">
+                        <a class="nav-item nav-link" href="#" onclick="logout()">退出登录</a>
+                    </div>
+                </nav>
+                <div id="contentArea">
+                    <!-- 内容将根据选择的菜单动态加载 -->
+                    <h2>请从左侧选择功能</h2>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-    // 初始化 axios 配置
-    function initializeAxios() {
-        // 设置基础 URL
-        axios.defaults.baseURL = window.location.origin;
-        
-        // 从 localStorage 获取 token
-        const token = localStorage.getItem('token');
+        // 初始化代码
+        const token = sessionStorage.getItem('token');
         if (!token) {
             window.location.href = '/';
-            return false;
         }
 
-        // 设置默认请求头
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        return true;
-    }
+        // 菜单配置
+        const menuItems = [
+            { id: 'user-management', title: '用户管理', adminOnly: true },
+            { id: 'youtube-downloader', title: 'YouTube下载器', adminOnly: false },
+            { id: 'whisper-ai', title: 'Whisper AI', adminOnly: false },
+            { id: 'translator', title: '翻译工具', adminOnly: false },
+            { id: 'summarizer', title: '文本摘要', adminOnly: false }
+        ];
 
-    // 添加请求拦截器
-    axios.interceptors.request.use(
-        function (config) {
-            const token = localStorage.getItem('token');
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-            return config;
-        },
-        function (error) {
-            return Promise.reject(error);
-        }
-    );
-
-    // 添加响应拦截器
-    axios.interceptors.response.use(
-        function (response) {
-            return response;
-        },
-        function (error) {
-            if (error.response && error.response.status === 401) {
-                console.log('认证失败，重定向到登录页面');
-                localStorage.removeItem('token');
-                window.location.href = '/';
-            }
-            return Promise.reject(error);
-        }
-    );
-
-    // 页面加载时初始化
-    window.onload = async function() {
-        if (!initializeAxios()) {
-            return;
-        }
-
-        try {
-            const response = await axios.get('/api/check-auth');
-            console.log('认证成功:', response.data);
-        } catch (error) {
-            console.error('认证检查失败:', error);
-            localStorage.removeItem('token');
+        // 退出登录
+        function logout() {
+            sessionStorage.removeItem('token');
             window.location.href = '/';
         }
-    };
 
-    function logout() {
-        localStorage.removeItem('token');
-        window.location.href = '/';
-    }
+        // 检查是否是管理员
+        async function checkAdmin() {
+            try {
+                const response = await fetch('/api/check-auth', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                if (!response.ok) {
+                    window.location.href = '/';
+                    return false;
+                }
+                const data = await response.json();
+                // 只返回是否是管理员的状态，不再直接重定向
+                return data.is_admin;
+            } catch (error) {
+                console.error('认证检查失败：', error);
+                return false;
+            }
+        }
+
+        // 加载菜单
+        async function loadMenu() {
+            try {
+                const isAdmin = await checkAdmin();
+                const sidebarMenu = document.getElementById('sidebarMenu');
+                sidebarMenu.innerHTML = '';
+                
+                menuItems.forEach(item => {
+                    if (!item.adminOnly || (item.adminOnly && isAdmin)) {
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.className = 'nav-link';
+                        link.textContent = item.title;
+                        link.onclick = (event) => loadContent(item.id, event);
+                        sidebarMenu.appendChild(link);
+                    }
+                });
+            } catch (error) {
+                console.error('加载菜单失败：', error);
+            }
+        }
+
+        // 加载内容区域
+        function loadContent(menuId, event) {
+            const contentArea = document.getElementById('contentArea');
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            if (event) {
+                event.target.classList.add('active');
+            }
+            
+            if (menuId === 'user-management') {
+                fetch('/api/users', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                })
+                .then(response => response.json())
+                .then(users => {
+                    contentArea.innerHTML = `
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h4>添加新用户</h4>
+                            </div>
+                            <div class="card-body">
+                                <form id="createUserForm">
+                                    <div class="form-group">
+                                        <label>用户名</label>
+                                        <input type="text" class="form-control" id="username" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>密码</label>
+                                        <input type="password" class="form-control" id="password" required>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input type="checkbox" class="form-check-input" id="isAdmin">
+                                        <label class="form-check-label">管理员权限</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">创建用户</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>用户列表</h4>
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>用户名</th>
+                                            <th>角色</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${users.map(user => `
+                                            <tr>
+                                                <td>${user.username}</td>
+                                                <td>${user.is_admin ? '管理员' : '普通用户'}</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">重置密码</button>
+                                                    ${user.username !== 'admin' ? 
+                                                        `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')">删除</button>` 
+                                                        : ''}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.getElementById('createUserForm').onsubmit = function(e) {
+                        e.preventDefault();
+                        const username = document.getElementById('username').value;
+                        const password = document.getElementById('password').value;
+                        const isAdmin = document.getElementById('isAdmin').checked;
+                
+                        fetch('/api/users', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + token
+                            },
+                            body: JSON.stringify({ username, password, is_admin: isAdmin })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            alert(data.msg);
+                            if (data.msg === 'User created successfully') {
+                                loadContent('user-management');
+                            }
+                        });
+                    };
+                });
+            } else {
+                contentArea.innerHTML = `<h2>${menuItems.find(item => item.id === menuId).title}</h2>
+                           <p>该功能正在开发中...</p>`;
+            }
+        }
+
+        // 用户管理相关函数
+        function deleteUser(username) {
+            if (confirm(`确定要删除用户 ${username} 吗？`)) {
+                fetch(`/api/users/${username}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.msg);
+                    loadContent('user-management');
+                });
+            }
+        }
+
+        function resetPassword(username) {
+            const newPassword = prompt(`请输入 ${username} 的新密码：`);
+            if (newPassword) {
+                fetch(`/api/users/${username}/password`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({ password: newPassword })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.msg);
+                });
+            }
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!token) {
+                window.location.href = '/';
+            } else {
+                loadMenu().catch(error => {
+                    console.error('初始化失败：', error);
+                });
+            }
+        });
     </script>
 </body>
 </html>
