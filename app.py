@@ -245,4 +245,6 @@ def users_page():
 
 # 应用入口点
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)  # 在开发模式下运行应用，端口为 5001
+    # 本地开发使用 5001 端口，Vercel 会自动分配端口
+    port = int(os.getenv('PORT', 5001))
+    app.run(host='0.0.0.0', port=port)

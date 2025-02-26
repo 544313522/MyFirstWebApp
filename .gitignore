@@ -1,18 +1,6 @@
-# 环境变量文件
 .env
-
-# Python 缓存文件
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Flask 实例文件夹
-instance/
-
-# IDE 配置文件
-.vscode/
-.idea/
-
-# 系统文件
 .DS_Store
+venv/
+.idea/
