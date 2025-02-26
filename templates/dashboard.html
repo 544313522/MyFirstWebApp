@@ -54,20 +54,110 @@
     </div>
 
     <script>
-        // 初始化代码
-        const token = sessionStorage.getItem('token');
-        if (!token) {
-            window.location.href = '/';
-        }
+        // 初始化配置
+        let config = {
+            token: null,
+            apiEndpoints: {
+                auth: '/api/check-auth',  // 用户认证接口
+                users: '/api/users'       // 用户管理接口
+            }
+        };
 
-        // 菜单配置
+        // 安全地获取token
+        try {
+            const token = sessionStorage.getItem('token');
+            if (token) {
+                config.token = token;
+            }
+        } catch (e) {
+            console.warn('无法访问 sessionStorage:', e);
+        }
+        
+        // 菜单项配置：定义所有可用的功能模块
         const menuItems = [
-            { id: 'user-management', title: '用户管理', adminOnly: true },
-            { id: 'youtube-downloader', title: 'YouTube下载器', adminOnly: false },
+            { id: 'user-management', title: '用户管理', adminOnly: true },  // 仅管理员可见
+            { id: 'youtube-downloader', title: 'YouTube下载器', adminOnly: false },  // 所有用户可见
             { id: 'whisper-ai', title: 'Whisper AI', adminOnly: false },
             { id: 'translator', title: '翻译工具', adminOnly: false },
-            { id: 'summarizer', title: '文本摘要', adminOnly: false }
+            { id: 'summarizer', title: '文本摘要', adminOnly: false },
+            { id: 'snake-game', title: '贪吃蛇', adminOnly: false },
+            { id: 'spaceship', title: '宇宙飞船', adminOnly: false },
+            { id: 'module-1', title: '待确定板块1', adminOnly: false },
+            { id: 'module-2', title: '待确定板块2', adminOnly: false },
+            { id: 'module-3', title: '待确定板块3', adminOnly: false },
+            { id: 'module-4', title: '待确定板块4', adminOnly: false }
         ];
+
+        // API 请求工具
+        const api = {
+            get headers() {
+                return {
+                    'Authorization': `Bearer ${config.token}`,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                };
+            },
+            
+            // GET请求方法
+            async get(url) {
+                try {
+                    console.log('发送GET请求:', url);
+                    console.log('请求头:', this.headers);
+                    
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: this.headers,
+                        credentials: 'same-origin',
+                        mode: 'cors'
+                    });
+
+                    console.log('收到响应:', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+
+                    // 错误处理
+                    if (!response.ok) {
+                        console.error('请求失败:', response.status, response.statusText);
+                        throw new Error(`请求失败: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('响应数据:', data);
+                    return data;
+                } catch (error) {
+                    console.error('API 请求错误:', error);
+                    throw error;
+                }
+            },
+
+            async post(url, data) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: this.headers,
+                    body: JSON.stringify(data)
+                });
+                return response.json();
+            },
+
+            async put(url, data) {
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: this.headers,
+                    body: JSON.stringify(data)
+                });
+                return response.json();
+            },
+
+            async delete(url) {
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: this.headers
+                });
+                return response.json();
+            }
+        };
 
         // 退出登录
         function logout() {
@@ -75,46 +165,114 @@
             window.location.href = '/';
         }
 
-        // 检查是否是管理员
-        async function checkAdmin() {
-            try {
-                const response = await fetch('/api/check-auth', {
-                    headers: {
-                        'Authorization': 'Bearer ' + token
-                    }
-                });
-                if (!response.ok) {
-                    window.location.href = '/';
-                    return false;
-                }
-                const data = await response.json();
-                // 修改这里：使用 is_admin 而不是检查用户名
-                return data.is_admin === true;
-            } catch (error) {
-                console.error('认证检查失败：', error);
-                return false;
-            }
-        }
-
         // 加载菜单
         async function loadMenu() {
             try {
-                const isAdmin = await checkAdmin();
+                // 先验证 token
+                if (!config.token) {
+                    throw new Error('未登录');
+                }
+
+                console.log('开始加载菜单...');
+                console.log('当前token:', config.token);
+
+                const data = await api.get(config.apiEndpoints.auth);
+                console.log('认证响应原始数据:', JSON.stringify(data, null, 2));
+                
+                if (!data || data.status !== 'success' || !data.user) {
+                    console.error('认证响应无效:', data);
+                    throw new Error('无效的认证响应');
+                }
+
+                console.log('用户认证成功:', {
+                    user: data.user,
+                    isAdmin: data.is_admin,
+                    status: data.status,
+                    authenticated: data.authenticated
+                });
+
+                if (!data.is_admin) {
+                    console.warn('用户不是管理员');
+                }
+
                 const sidebarMenu = document.getElementById('sidebarMenu');
+                if (!sidebarMenu) {
+                    throw new Error('菜单容器不存在');
+                }
+
                 sidebarMenu.innerHTML = '';
                 
-                menuItems.forEach(item => {
-                    if (!item.adminOnly || (item.adminOnly && isAdmin)) {
+                // 添加用户信息
+                const userInfo = document.createElement('div');
+                userInfo.className = 'mb-4 text-muted';
+                userInfo.textContent = `当前用户: ${data.user}${data.is_admin ? ' (管理员)' : ''}`;
+                sidebarMenu.appendChild(userInfo);
+                
+                // 加载菜单项
+                let visibleMenuCount = 0;
+                let adminMenuCount = 0;
+                let normalMenuCount = 0;
+                
+                console.log('开始处理菜单项...');
+                console.log('总菜单项数量:', menuItems.length);
+
+                menuItems.forEach((item, index) => {
+                    const shouldShow = !item.adminOnly || (item.adminOnly && data.is_admin);
+                    console.log(`处理菜单项 [${index + 1}/${menuItems.length}] ${item.title}:`, {
+                        adminOnly: item.adminOnly,
+                        isAdmin: data.is_admin,
+                        shouldShow: shouldShow
+                    });
+                    
+                    if (item.adminOnly) {
+                        adminMenuCount++;
+                    } else {
+                        normalMenuCount++;
+                    }
+                    
+                    if (shouldShow) {
                         const link = document.createElement('a');
                         link.href = '#';
                         link.className = 'nav-link';
                         link.textContent = item.title;
-                        link.onclick = (event) => loadContent(item.id, event);
+                        link.onclick = (event) => {
+                            event.preventDefault();
+                            loadContent(item.id, event);
+                        };
                         sidebarMenu.appendChild(link);
+                        visibleMenuCount++;
+                        console.log(`已添加菜单项: ${item.title}`);
                     }
                 });
+                
+                console.log('菜单统计:', {
+                    total: menuItems.length,
+                    adminOnly: adminMenuCount,
+                    normal: normalMenuCount,
+                    visible: visibleMenuCount
+                });
+                
+                if (visibleMenuCount === 0) {
+                    console.warn('没有可显示的菜单项');
+                    sidebarMenu.innerHTML += `
+                        <div class="alert alert-warning">
+                            未找到可显示的菜单项
+                        </div>
+                    `;
+                }
             } catch (error) {
                 console.error('加载菜单失败：', error);
+                const sidebarMenu = document.getElementById('sidebarMenu');
+                if (sidebarMenu) {
+                    sidebarMenu.innerHTML = `
+                        <div class="alert alert-danger">
+                            加载菜单失败：${error.message}
+                        </div>
+                    `;
+                }
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 3000);
             }
         }
 
@@ -129,126 +287,114 @@
             }
             
             if (menuId === 'user-management') {
-                fetch('/api/users', {
-                    headers: {
-                        'Authorization': 'Bearer ' + token
-                    }
-                })
-                .then(response => response.json())
-                .then(users => {
-                    contentArea.innerHTML = `
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h4>添加新用户</h4>
+                api.get(config.apiEndpoints.users)
+                    .then(users => {
+                        contentArea.innerHTML = `
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h4>添加新用户</h4>
+                                </div>
+                                <div class="card-body">
+                                    <form id="createUserForm">
+                                        <div class="form-group">
+                                            <label>用户名</label>
+                                            <input type="text" class="form-control" id="username" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>密码</label>
+                                            <input type="password" class="form-control" id="password" required>
+                                        </div>
+                                        <div class="form-check mb-3">
+                                            <input type="checkbox" class="form-check-input" id="isAdmin">
+                                            <label class="form-check-label">管理员权限</label>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">创建用户</button>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <form id="createUserForm">
-                                    <div class="form-group">
-                                        <label>用户名</label>
-                                        <input type="text" class="form-control" id="username" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>密码</label>
-                                        <input type="password" class="form-control" id="password" required>
-                                    </div>
-                                    <div class="form-check mb-3">
-                                        <input type="checkbox" class="form-check-input" id="isAdmin">
-                                        <label class="form-check-label">管理员权限</label>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary">创建用户</button>
-                                </form>
-                            </div>
-                        </div>
-                        <div class="card">
-                            <div class="card-header">
-                                <h4>用户列表</h4>
-                            </div>
-                            <div class="card-body">
-                                <table class="table">
-                                    <thead>
-                                        <tr>
-                                            <th>用户名</th>
-                                            <th>角色</th>
-                                            <th>操作</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${users.map(user => `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h4>用户列表</h4>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <thead>
                                             <tr>
-                                                <td>${user.username}</td>
-                                                <td>${user.is_admin ? '管理员' : '普通用户'}</td>
-                                                <td>
-                                                    <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">重置密码</button>
-                                                    ${user.username !== 'admin' ? 
-                                                        `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')">删除</button>` 
-                                                        : ''}
-                                                </td>
+                                                <th>用户名</th>
+                                                <th>角色</th>
+                                                <th>操作</th>
                                             </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            ${users.map(user => `
+                                                <tr>
+                                                    <td>${user.username}</td>
+                                                    <td>${user.is_admin ? '管理员' : '普通用户'}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">重置密码</button>
+                                                        ${user.username !== 'admin' ? 
+                                                            `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')">删除</button>` 
+                                                            : ''}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                        
+                        document.getElementById('createUserForm').onsubmit = function(e) {
+                            e.preventDefault();
+                            const username = document.getElementById('username').value;
+                            const password = document.getElementById('password').value;
+                            const isAdmin = document.getElementById('isAdmin').checked;
                     
-                    document.getElementById('createUserForm').onsubmit = function(e) {
-                        e.preventDefault();
-                        const username = document.getElementById('username').value;
-                        const password = document.getElementById('password').value;
-                        const isAdmin = document.getElementById('isAdmin').checked;
-                
-                        fetch('/api/users', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': 'Bearer ' + token
-                            },
-                            body: JSON.stringify({ username, password, is_admin: isAdmin })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            alert(data.msg);
-                            if (data.msg === 'User created successfully') {
-                                loadContent('user-management');
-                            }
-                        });
-                    };
-                });
+                            api.post(config.apiEndpoints.users, { 
+                                username, 
+                                password, 
+                                is_admin: isAdmin 
+                            })
+                            .then(data => {
+                                alert(data.msg);
+                                if (data.msg === 'User created successfully') {
+                                    loadContent('user-management');
+                                }
+                            });
+                        };
+                    });
             } else {
-                contentArea.innerHTML = `<h2>${menuItems.find(item => item.id === menuId).title}</h2>
-                           <p>该功能正在开发中...</p>`;
+                // 统一处理其他所有功能模块
+                const menuItem = menuItems.find(item => item.id === menuId);
+                contentArea.innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>${menuItem.title}</h2>
+                        </div>
+                        <div class="card-body">
+                            <p>该功能正在开发中...</p>
+                        </div>
+                    </div>`;
             }
         }
 
         // 用户管理相关函数
         function deleteUser(username) {
             if (confirm(`确定要删除用户 ${username} 吗？`)) {
-                fetch(`/api/users/${username}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': 'Bearer ' + token
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.msg);
-                    loadContent('user-management');
-                });
+                api.delete(`${config.apiEndpoints.users}/${username}`)
+                    .then(data => {
+                        alert(data.msg);
+                        loadContent('user-management');
+                    });
             }
         }
 
         function resetPassword(username) {
             const newPassword = prompt(`请输入 ${username} 的新密码：`);
             if (newPassword) {
-                fetch(`/api/users/${username}/password`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ password: newPassword })
+                api.put(`${config.apiEndpoints.users}/${username}/password`, {
+                    password: newPassword
                 })
-                .then(response => response.json())
                 .then(data => {
                     alert(data.msg);
                 });
@@ -257,13 +403,22 @@
 
         // 页面加载完成后执行
         document.addEventListener('DOMContentLoaded', function() {
+            let token;
+            try {
+                token = sessionStorage.getItem('token');
+            } catch (e) {
+                console.error('无法访问 sessionStorage:', e);
+                token = null;
+            }
+
             if (!token) {
                 window.location.href = '/';
-            } else {
-                loadMenu().catch(error => {
-                    console.error('初始化失败：', error);
-                });
+                return;
             }
+
+            loadMenu().catch(error => {
+                console.error('初始化失败：', error);
+            });
         });
     </script>
 </body>

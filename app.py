@@ -46,12 +46,15 @@ def dashboard_page():
 @jwt_required()  # 需要 JWT 认证
 def dashboard_data():
     current_user = get_jwt_identity()  # 获取当前用户身份
-    if current_user != 'admin':  # 验证是否为管理员
-        return jsonify({"msg": "Unauthorized"}), 403
+    # 查询用户信息获取管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
     return jsonify({
         "status": "success",
         "user": current_user,
-        "authenticated": True
+        "authenticated": True,
+        "is_admin": is_admin
     })
 
 # 认证检查 API 路由
@@ -59,15 +62,39 @@ def dashboard_data():
 @jwt_required()
 def check_auth():
     current_user = get_jwt_identity()
-    # 查询用户信息获取管理员状态
-    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
-    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
-    
-    return jsonify({
-        "msg": "Authorized", 
-        "user": current_user,
-        "is_admin": is_admin
-    }), 200
+    try:
+        # 查询用户信息获取管理员状态
+        user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+        
+        # 确保 is_admin 是布尔类型
+        is_admin = False
+        if user_query.data:
+            raw_value = user_query.data[0].get('is_admin')
+            # 处理各种可能的值类型
+            if isinstance(raw_value, bool):
+                is_admin = raw_value
+            elif isinstance(raw_value, str):
+                is_admin = raw_value.lower() == 'true'
+            elif isinstance(raw_value, (int, float)):
+                is_admin = bool(raw_value)
+        
+        print(f"Debug - is_admin type: {type(is_admin)}, value: {is_admin}")  # 调试日志
+        
+        return jsonify({
+            "status": "success",
+            "user": current_user,
+            "authenticated": True,
+            "is_admin": is_admin
+        }), 200
+    except Exception as e:
+        print(f"Auth check error: {str(e)}")  # 错误日志
+        return jsonify({
+            "status": "error",
+            "user": current_user,
+            "authenticated": False,
+            "is_admin": False,
+            "msg": str(e)
+        }), 500
 
 # 创建管理员账户路由
 @app.route('/create-admin', methods=['POST'])
@@ -150,15 +177,29 @@ def delete_admin():
 @jwt_required()
 def get_users():
     current_user = get_jwt_identity()
-    # 查询当前用户的管理员状态
-    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
-    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
-    
-    if not is_admin:
-        return jsonify({"msg": "Unauthorized"}), 403
-    
-    users = supabase.table('users').select('username,is_admin').execute()
-    return jsonify(users.data), 200
+    try:
+        # 查询当前用户的管理员状态
+        user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+        
+        # 使用相同的类型转换逻辑
+        is_admin = False
+        if user_query.data:
+            raw_value = user_query.data[0].get('is_admin')
+            if isinstance(raw_value, bool):
+                is_admin = raw_value
+            elif isinstance(raw_value, str):
+                is_admin = raw_value.lower() == 'true'
+            elif isinstance(raw_value, (int, float)):
+                is_admin = bool(raw_value)
+        
+        if not is_admin:
+            return jsonify({"msg": "Unauthorized"}), 403
+        
+        users = supabase.table('users').select('username,is_admin').execute()
+        return jsonify(users.data), 200
+    except Exception as e:
+        print(f"Get users error: {str(e)}")  # 错误日志
+        return jsonify({"msg": "Error fetching users"}), 500
 
 @app.route('/api/users', methods=['POST'])
 @jwt_required()
