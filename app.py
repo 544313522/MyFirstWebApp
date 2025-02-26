@@ -59,11 +59,14 @@ def dashboard_data():
 @jwt_required()
 def check_auth():
     current_user = get_jwt_identity()
-    # 移除管理员检查，允许所有有效token的用户访问
+    # 查询用户信息获取管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
     return jsonify({
         "msg": "Authorized", 
         "user": current_user,
-        "is_admin": current_user == 'admin'
+        "is_admin": is_admin
     }), 200
 
 # 创建管理员账户路由
@@ -95,22 +98,22 @@ def create_admin():
 # 用户登录路由
 @app.route('/login', methods=['POST'])
 def login():
-    # 获取登录表单数据
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
     
-    # 查询用户信息
     user_query = supabase.table('users').select('*').eq('username', username).execute()
-    # 验证用户名和密码
     if not user_query.data or not check_password_hash(user_query.data[0]['password'], password):
         return jsonify({"msg": "Bad username or password"}), 401
+    
+    # 获取用户的管理员状态
+    is_admin = user_query.data[0]['is_admin']
     
     # 生成访问令牌
     access_token = create_access_token(identity=username)
     response_data = {
         "access_token": access_token,
-        "redirect": '/dashboard' if username == 'admin' else '/'
+        "redirect": '/dashboard'  # 所有用户都重定向到仪表板
     }
     return jsonify(response_data), 200
 
@@ -147,10 +150,13 @@ def delete_admin():
 @jwt_required()
 def get_users():
     current_user = get_jwt_identity()
-    if current_user != 'admin':
+    # 查询当前用户的管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
+    if not is_admin:
         return jsonify({"msg": "Unauthorized"}), 403
     
-    # 获取所有用户列表，但不返回密码信息
     users = supabase.table('users').select('username,is_admin').execute()
     return jsonify(users.data), 200
 
@@ -158,7 +164,11 @@ def get_users():
 @jwt_required()
 def create_user():
     current_user = get_jwt_identity()
-    if current_user != 'admin':
+    # 查询当前用户的管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
+    if not is_admin:
         return jsonify({"msg": "Unauthorized"}), 403
     
     data = request.get_json()
@@ -194,7 +204,11 @@ def create_user():
 @jwt_required()
 def delete_user(username):
     current_user = get_jwt_identity()
-    if current_user != 'admin':
+    # 查询当前用户的管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
+    if not is_admin:
         return jsonify({"msg": "Unauthorized"}), 403
     
     if username == 'admin':
@@ -207,7 +221,11 @@ def delete_user(username):
 @jwt_required()
 def update_user_password(username):
     current_user = get_jwt_identity()
-    if current_user != 'admin':
+    # 查询当前用户的管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
+    if not is_admin:
         return jsonify({"msg": "Unauthorized"}), 403
     
     data = request.get_json()

@@ -88,8 +88,8 @@
                     return false;
                 }
                 const data = await response.json();
-                // 只返回是否是管理员的状态，不再直接重定向
-                return data.is_admin;
+                // 修改这里：使用 is_admin 而不是检查用户名
+                return data.is_admin === true;
             } catch (error) {
                 console.error('认证检查失败：', error);
                 return false;
