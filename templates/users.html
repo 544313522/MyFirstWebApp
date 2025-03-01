@@ -54,29 +54,75 @@
     </div>
 
     <script>
+        // 安全地获取token
+        let token;
+        try {
+            token = sessionStorage.getItem('token');
+        } catch (e) {
+            console.warn('无法访问 sessionStorage:', e);
+            token = null;
+        }
+    
         // 检查认证状态
-        fetch('/api/check-auth', {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                window.location.href = '/';
-            }
-        });
-
-        // 加载用户列表
-        function loadUsers() {
-            fetch('/api/users', {
+        if (!token) {
+            window.location.href = '/';
+        } else {
+            // 验证token有效性
+            fetch('/api/check-auth', {
                 headers: {
-                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    'Authorization': `Bearer ${token}`
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('认证失败');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.user) {
+                    throw new Error('无效的用户数据');
+                }
+                // 确认是管理员才能访问用户管理页面
+                if (!data.is_admin) {
+                    alert('只有管理员可以访问此页面');
+                    window.location.href = '/dashboard';
+                } else {
+                    // 加载用户列表
+                    loadUsers();
+                }
+            })
+            .catch(error => {
+                console.error('认证检查失败:', error);
+                alert('认证失败，请重新登录');
+                window.location.href = '/';
+            });
+        }
+    
+        // 加载用户列表
+        function loadUsers() {
+            // 显示加载状态
+            const userList = document.getElementById('userList');
+            userList.innerHTML = '<tr><td colspan="3" class="text-center">加载中...</td></tr>';
+            
+            fetch('/api/users', {
+                headers: {
+                    'Authorization': 'Bearer ' + sessionStorage.getItem('token')
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`请求失败: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(users => {
-                const userList = document.getElementById('userList');
                 userList.innerHTML = '';
+                if (users.length === 0) {
+                    userList.innerHTML = '<tr><td colspan="3" class="text-center">暂无用户数据</td></tr>';
+                    return;
+                }
+                
                 users.forEach(user => {
                     userList.innerHTML += `
                         <tr>
@@ -89,6 +135,10 @@
                         </tr>
                     `;
                 });
+            })
+            .catch(error => {
+                console.error('加载用户失败:', error);
+                userList.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: ${error.message}</td></tr>`;
             });
         }
 
