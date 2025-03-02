@@ -416,6 +416,12 @@ def update_user_password(username):
 def users_page():
     return render_template('users.html')
 
+# 在现有路由下添加
+@app.route('/snake-game')
+@jwt_required()
+def snake_game():
+    return render_template('snake_game.html')
+
 # 应用入口点
 if __name__ == '__main__':
     # 本地开发使用 5001 端口，Vercel 会自动分配端口
