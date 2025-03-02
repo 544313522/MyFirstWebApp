@@ -416,6 +416,7 @@
             
             // 在 loadContent 函数中的用户管理部分
             if (menuId === 'user-management') {
+                // 用户管理代码保持不变
                 api.get(config.apiEndpoints.users)
                     .then(async users => {
                         // 获取每个用户的权限
@@ -530,6 +531,39 @@
                             });
                         };
                     });
+            } else if (menuId === 'snake-game') {
+                // 贪吃蛇游戏处理 - 在当前页面加载游戏，而不是跳转
+                contentArea.innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>贪吃蛇</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="game-container">
+                                <div class="score-board">
+                                    分数: <span id="score">0</span>
+                                </div>
+                                <div id="game-canvas"></div>
+                                <div class="controls mt-3">
+                                    <button id="start-btn" class="btn btn-success">开始游戏</button>
+                                    <button id="pause-btn" class="btn btn-warning">暂停</button>
+                                    <button id="reset-btn" class="btn btn-danger">重置</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // 加载P5.js库
+                if (!document.getElementById('p5-script')) {
+                    const script = document.createElement('script');
+                    script.id = 'p5-script';
+                    script.src = 'https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js';
+                    script.onload = initSnakeGame;
+                    document.head.appendChild(script);
+                } else {
+                    initSnakeGame();
+                }
             } else {
                 // 统一处理其他所有功能模块
                 const menuItem = menuItems.find(item => item.id === menuId);
@@ -587,6 +621,219 @@
                 console.error('初始化失败：', error);
             });
         });
+        
+        // 贪吃蛇游戏初始化
+        function initSnakeGame() {
+            // 添加游戏样式
+            const style = document.createElement('style');
+            style.textContent = `
+                .game-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    margin-top: 20px;
+                }
+                .score-board {
+                    margin-bottom: 20px;
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                canvas {
+                    border: 2px solid #333;
+                    border-radius: 5px;
+                }
+                .controls {
+                    margin-top: 20px;
+                    text-align: center;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // 游戏变量
+            let snake = [];
+            let food;
+            let cellSize = 20;
+            let cols, rows;
+            let direction = 'RIGHT';
+            let gameStarted = false;
+            let gamePaused = false;
+            let score = 0;
+            let speed = 10;
+            let gameCanvas;
+            
+            // 创建新的p5实例
+            new p5(function(p) {
+                p.setup = function() {
+                    gameCanvas = p.createCanvas(600, 400);
+                    gameCanvas.parent('game-canvas');
+                    cols = p.floor(p.width / cellSize);
+                    rows = p.floor(p.height / cellSize);
+                    p.frameRate(speed);
+                    
+                    // 初始化蛇
+                    resetGame();
+                    
+                    // 按钮事件监听
+                    document.getElementById('start-btn').addEventListener('click', startGame);
+                    document.getElementById('pause-btn').addEventListener('click', togglePause);
+                    document.getElementById('reset-btn').addEventListener('click', resetGame);
+                };
+                
+                p.draw = function() {
+                    p.background(51);
+                    
+                    if (gameStarted && !gamePaused) {
+                        // 移动蛇
+                        moveSnake();
+                        
+                        // 检查是否吃到食物
+                        if (snake[0].x === food.x && snake[0].y === food.y) {
+                            eatFood();
+                        }
+                        
+                        // 检查碰撞
+                        checkCollision();
+                    }
+                    
+                    // 绘制食物
+                    p.fill(255, 0, 0);
+                    p.rect(food.x * cellSize, food.y * cellSize, cellSize, cellSize);
+                    
+                    // 绘制蛇
+                    p.fill(0, 255, 0);
+                    for (let i = 0; i < snake.length; i++) {
+                        p.rect(snake[i].x * cellSize, snake[i].y * cellSize, cellSize, cellSize);
+                    }
+                };
+                
+                p.keyPressed = function() {
+                    if (!gameStarted) {
+                        startGame();
+                        return;
+                    }
+                    
+                    if (p.keyCode === p.LEFT_ARROW || p.key === 'a' || p.key === 'A') {
+                        if (direction !== 'RIGHT') direction = 'LEFT';
+                    } else if (p.keyCode === p.RIGHT_ARROW || p.key === 'd' || p.key === 'D') {
+                        if (direction !== 'LEFT') direction = 'RIGHT';
+                    } else if (p.keyCode === p.UP_ARROW || p.key === 'w' || p.key === 'W') {
+                        if (direction !== 'DOWN') direction = 'UP';
+                    } else if (p.keyCode === p.DOWN_ARROW || p.key === 's' || p.key === 'S') {
+                        if (direction !== 'UP') direction = 'DOWN';
+                    } else if (p.key === ' ') {
+                        togglePause();
+                    }
+                };
+                
+                // 移动蛇
+                function moveSnake() {
+                    // 复制蛇头
+                    const head = { x: snake[0].x, y: snake[0].y };
+                    
+                    // 根据方向移动蛇头
+                    if (direction === 'LEFT') head.x--;
+                    else if (direction === 'RIGHT') head.x++;
+                    else if (direction === 'UP') head.y--;
+                    else if (direction === 'DOWN') head.y++;
+                    
+                    // 添加新的蛇头
+                    snake.unshift(head);
+                    
+                    // 如果没有吃到食物，移除蛇尾
+                    if (!(head.x === food.x && head.y === food.y)) {
+                        snake.pop();
+                    }
+                }
+                
+                // 生成食物
+                function generateFood() {
+                    let overlapping;
+                    do {
+                        overlapping = false;
+                        food = {
+                            x: p.floor(p.random(cols)),
+                            y: p.floor(p.random(rows))
+                        };
+                        
+                        // 确保食物不会生成在蛇身上
+                        for (let i = 0; i < snake.length; i++) {
+                            if (snake[i].x === food.x && snake[i].y === food.y) {
+                                overlapping = true;
+                                break;
+                            }
+                        }
+                    } while (overlapping);
+                }
+                
+                // 吃到食物
+                function eatFood() {
+                    generateFood();
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    
+                    // 每增加50分增加速度
+                    if (score % 50 === 0) {
+                        speed++;
+                        p.frameRate(speed);
+                    }
+                }
+                
+                // 检查碰撞
+                function checkCollision() {
+                    const head = snake[0];
+                    
+                    // 检查是否撞墙
+                    if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows) {
+                        gameOver();
+                        return;
+                    }
+                    
+                    // 检查是否撞到自己
+                    for (let i = 1; i < snake.length; i++) {
+                        if (head.x === snake[i].x && head.y === snake[i].y) {
+                            gameOver();
+                            return;
+                        }
+                    }
+                }
+                
+                // 游戏结束
+                function gameOver() {
+                    gameStarted = false;
+                    alert(`游戏结束！你的得分是: ${score}`);
+                }
+                
+                // 开始游戏
+                function startGame() {
+                    if (!gameStarted) {
+                        gameStarted = true;
+                        gamePaused = false;
+                    }
+                }
+                
+                // 暂停/继续游戏
+                function togglePause() {
+                    if (gameStarted) {
+                        gamePaused = !gamePaused;
+                        document.getElementById('pause-btn').textContent = gamePaused ? '继续' : '暂停';
+                    }
+                }
+                
+                // 重置游戏
+                function resetGame() {
+                    snake = [{ x: p.floor(cols / 2), y: p.floor(rows / 2) }];
+                    direction = 'RIGHT';
+                    generateFood();
+                    gameStarted = false;
+                    gamePaused = false;
+                    score = 0;
+                    speed = 10;
+                    p.frameRate(speed);
+                    document.getElementById('score').textContent = score;
+                    document.getElementById('pause-btn').textContent = '暂停';
+                }
+            });
+        }
     </script>
 </body>
 </html>
