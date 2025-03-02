@@ -58,6 +58,118 @@ def dashboard_data():
     })
 
 # 认证检查 API 路由
+# 获取用户权限
+@app.route('/api/users/<username>/permissions', methods=['GET'])
+@jwt_required()
+def get_user_permissions(username):
+    current_user = get_jwt_identity()
+    # 查询当前用户的管理员状态
+    user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+    is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+    
+    if not is_admin:
+        return jsonify({"msg": "Unauthorized"}), 403
+    
+    # 查询用户权限
+    permissions_query = supabase.table('user_permissions').select('*').eq('username', username).execute()
+    
+    # 如果没有权限记录，返回默认权限（所有非管理员功能可见）
+    if not permissions_query.data:
+        # 获取所有非管理员功能模块ID
+        modules = {
+            'youtube-downloader': True, 
+            'whisper-ai': True, 
+            'translator': True, 
+            'summarizer': True, 
+            'snake-game': True, 
+            'spaceship': True, 
+            'module-1': True, 
+            'module-2': True, 
+            'module-3': True, 
+            'module-4': True
+        }
+        return jsonify(modules), 200
+    
+    # 移除不需要的字段并转换字段名
+    permissions = {}
+    raw_permissions = permissions_query.data[0]
+    
+    # 将数据库中的下划线格式转换为前端使用的连字符格式
+    for key, value in raw_permissions.items():
+        if key not in ['id', 'username']:
+            # 将 youtube_downloader 转换为 youtube-downloader
+            frontend_key = key.replace('_', '-')
+            permissions[frontend_key] = value
+    
+    print(f"返回用户 {username} 的权限: {permissions}")  # 调试日志
+    return jsonify(permissions), 200
+
+# 更新用户权限
+@app.route('/api/users/<username>/permissions', methods=['PUT'])
+@jwt_required()
+def update_user_permissions(username):
+    current_user = get_jwt_identity()
+    try:
+        # 查询当前用户的管理员状态
+        user_query = supabase.table('users').select('is_admin').eq('username', current_user).execute()
+        is_admin = user_query.data[0]['is_admin'] if user_query.data else False
+        
+        if not is_admin:
+            return jsonify({"msg": "Unauthorized"}), 403
+        
+        data = request.get_json()
+        
+        # 检查用户是否存在
+        user_exists = supabase.table('users').select('username').eq('username', username).execute()
+        if not user_exists.data:
+            return jsonify({"msg": "User not found"}), 404
+        
+        # 添加调试日志
+        print(f"收到权限更新请求: 用户={username}, 数据={data}")
+        
+        # 检查是否已有权限记录
+        permissions_query = supabase.table('user_permissions').select('*').eq('username', username).execute()
+        
+        try:
+            if permissions_query.data:
+                # 更新现有权限
+                # 确保只更新权限字段，移除可能的其他字段
+                update_data = {}
+                for key, value in data.items():
+                    # 只保留布尔值字段
+                    if isinstance(value, bool) and key != 'username':
+                        # 将连字符转换为下划线
+                        db_key = key.replace('-', '_')
+                        update_data[db_key] = value
+                
+                print(f"更新权限数据: {update_data}")
+                result = supabase.table('user_permissions').update(update_data).eq('username', username).execute()
+                print(f"更新结果: {result}")
+            else:
+                # 创建新权限记录
+                insert_data = {'username': username}
+                for key, value in data.items():
+                    # 只保留布尔值字段
+                    if isinstance(value, bool) and key != 'username':
+                        # 将连字符转换为下划线
+                        db_key = key.replace('-', '_')
+                        insert_data[db_key] = value
+                
+                print(f"插入权限数据: {insert_data}")
+                result = supabase.table('user_permissions').insert(insert_data).execute()
+                print(f"插入结果: {result}")
+            
+            return jsonify({"msg": "Permissions updated successfully"}), 200
+        except Exception as e:
+            print(f"Supabase操作错误: {str(e)}")
+            return jsonify({"msg": f"Database error: {str(e)}"}), 500
+            
+    except Exception as e:
+        print(f"权限更新错误: {str(e)}")
+        return jsonify({"msg": f"Error updating permissions: {str(e)}"}), 500
+
+# 修改check-auth接口，返回用户权限
+# 修改check-auth接口，确保权限字段名与前端匹配
 @app.route('/api/check-auth')
 @jwt_required()
 def check_auth():
@@ -78,22 +190,42 @@ def check_auth():
             elif isinstance(raw_value, (int, float)):
                 is_admin = bool(raw_value)
         
-        print(f"Debug - is_admin type: {type(is_admin)}, value: {is_admin}")  # 调试日志
+        # 获取用户权限
+        permissions = {}
+        if not is_admin:  # 只有非管理员需要检查权限
+            permissions_query = supabase.table('user_permissions').select('*').eq('username', current_user).execute()
+            if permissions_query.data:
+                # 移除不需要的字段
+                raw_permissions = permissions_query.data[0]
+                if 'id' in raw_permissions:
+                    del raw_permissions['id']
+                if 'username' in raw_permissions:
+                    del raw_permissions['username']
+                
+                # 将下划线格式转换为连字符格式，以匹配前端菜单ID
+                for key, value in raw_permissions.items():
+                    # 将 youtube_downloader 转换为 youtube-downloader
+                    frontend_key = key.replace('_', '-')
+                    permissions[frontend_key] = value
+        
+        print(f"用户权限数据: {permissions}")  # 调试日志
         
         return jsonify({
             "status": "success",
+            "msg": "Authorized", 
             "user": current_user,
-            "authenticated": True,
-            "is_admin": is_admin
+            "is_admin": is_admin,
+            "permissions": permissions,
+            "authenticated": True
         }), 200
     except Exception as e:
         print(f"Auth check error: {str(e)}")  # 错误日志
         return jsonify({
             "status": "error",
+            "msg": "Error checking authorization",
             "user": current_user,
-            "authenticated": False,
             "is_admin": False,
-            "msg": str(e)
+            "authenticated": False
         }), 500
 
 # 创建管理员账户路由

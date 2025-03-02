@@ -142,13 +142,39 @@
             },
 
             async put(url, data) {
-                const response = await fetch(url, {
-                    method: 'PUT',
-                    headers: this.headers,
-                    body: JSON.stringify(data)
-                });
-                return response.json();
-            },
+                try {
+                    console.log('发送PUT请求:', url);
+                    console.log('请求头:', this.headers);
+                    console.log('请求数据:', data);
+                    
+                    const response = await fetch(url, {
+                        method: 'PUT',
+                        headers: this.headers,
+                        body: JSON.stringify(data),
+                        credentials: 'same-origin',
+                        mode: 'cors'
+                    });
+                    
+                    console.log('收到响应:', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                    
+                    // 错误处理
+                    if (!response.ok) {
+                        console.error('请求失败:', response.status, response.statusText);
+                        throw new Error(`请求失败: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    console.log('响应数据:', result);
+                    return result;
+                } catch (error) {
+                    console.error('API PUT请求错误:', error);
+                    throw error;
+                }
+            },  // 这里缺少了一个逗号
 
             async delete(url) {
                 const response = await fetch(url, {
@@ -166,16 +192,17 @@
         }
 
         // 加载菜单
+        // 在加载菜单函数中添加更详细的日志
         async function loadMenu() {
             try {
                 // 先验证 token
                 if (!config.token) {
                     throw new Error('未登录');
                 }
-
+        
                 console.log('开始加载菜单...');
                 console.log('当前token:', config.token);
-
+        
                 const data = await api.get(config.apiEndpoints.auth);
                 console.log('认证响应原始数据:', JSON.stringify(data, null, 2));
                 
@@ -183,23 +210,19 @@
                     console.error('认证响应无效:', data);
                     throw new Error('无效的认证响应');
                 }
-
+        
                 console.log('用户认证成功:', {
                     user: data.user,
                     isAdmin: data.is_admin,
                     status: data.status,
                     authenticated: data.authenticated
                 });
-
-                if (!data.is_admin) {
-                    console.warn('用户不是管理员');
-                }
-
+        
                 const sidebarMenu = document.getElementById('sidebarMenu');
                 if (!sidebarMenu) {
                     throw new Error('菜单容器不存在');
                 }
-
+        
                 sidebarMenu.innerHTML = '';
                 
                 // 添加用户信息
@@ -215,13 +238,31 @@
                 
                 console.log('开始处理菜单项...');
                 console.log('总菜单项数量:', menuItems.length);
-
+        
                 menuItems.forEach((item, index) => {
-                    const shouldShow = !item.adminOnly || (item.adminOnly && data.is_admin);
+                    // 判断是否显示菜单项
+                    let shouldShow = false;
+                    
+                    if (data.is_admin) {
+                        // 管理员可以看到所有菜单
+                        shouldShow = true;
+                    } else {
+                        // 普通用户根据权限判断
+                        if (item.adminOnly) {
+                            // 管理员专属功能，普通用户不可见
+                            shouldShow = false;
+                        } else {
+                            // 检查用户是否有权限访问此功能
+                            shouldShow = data.permissions && data.permissions[item.id] === true;
+                        }
+                    }
+                    
                     console.log(`处理菜单项 [${index + 1}/${menuItems.length}] ${item.title}:`, {
                         adminOnly: item.adminOnly,
                         isAdmin: data.is_admin,
-                        shouldShow: shouldShow
+                        hasPermission: shouldShow,
+                        permissionValue: data.permissions ? data.permissions[item.id] : undefined,
+                        permissionKey: item.id
                     });
                     
                     if (item.adminOnly) {
@@ -245,11 +286,15 @@
                     }
                 });
                 
+                console.log('用户权限数据:', data.permissions);
+                
+                // 在处理完所有菜单项后添加
                 console.log('菜单统计:', {
                     total: menuItems.length,
                     adminOnly: adminMenuCount,
                     normal: normalMenuCount,
-                    visible: visibleMenuCount
+                    visible: visibleMenuCount,
+                    permissions: data.permissions
                 });
                 
                 if (visibleMenuCount === 0) {
@@ -277,6 +322,89 @@
         }
 
         // 加载内容区域
+        // 添加一个全局变量来跟踪权限更改
+        let pendingPermissionChanges = {};
+        
+        // 修改权限更新函数
+        function trackPermissionChange(username, moduleId, enabled) {
+            // 初始化用户的权限更改跟踪对象
+            if (!pendingPermissionChanges[username]) {
+                pendingPermissionChanges[username] = {};
+            }
+            
+            // 记录权限更改
+            pendingPermissionChanges[username][moduleId] = enabled;
+            
+            // 显示保存按钮
+            const saveBtn = document.getElementById(`save-permissions-${username}`);
+            if (saveBtn) {
+                saveBtn.style.display = 'inline-block';
+            }
+            
+            console.log(`已记录权限更改: ${username}.${moduleId} = ${enabled}`);
+            console.log('待保存的权限更改:', pendingPermissionChanges);
+        }
+        
+        // 添加保存权限的函数
+        // 修改保存权限的函数，添加更详细的错误处理和日志
+        async function savePermissions(username) {
+            try {
+                if (!pendingPermissionChanges[username] || Object.keys(pendingPermissionChanges[username]).length === 0) {
+                    console.log('没有需要保存的权限更改');
+                    return;
+                }
+                
+                console.log('准备保存权限更改，检查认证信息...');
+                if (!config.token) {
+                    throw new Error('未找到认证令牌，请重新登录');
+                }
+                
+                // 获取当前用户的所有权限
+                const response = await api.get(`/api/users/${username}/permissions`);
+                console.log('当前权限:', response);
+                
+                // 合并权限更改
+                const updatedPermissions = { ...response };
+                for (const [moduleId, enabled] of Object.entries(pendingPermissionChanges[username])) {
+                    updatedPermissions[moduleId] = enabled;
+                }
+                
+                console.log('更新后的权限:', updatedPermissions);
+                console.log('发送请求头:', api.headers);
+                
+                // 发送更新请求
+                const result = await api.put(`/api/users/${username}/permissions`, updatedPermissions);
+                console.log('更新结果:', result);
+                
+                if (result.msg === 'Permissions updated successfully') {
+                    alert(`已成功更新用户 ${username} 的权限设置`);
+                    // 清除该用户的待保存更改
+                    delete pendingPermissionChanges[username];
+                    // 隐藏保存按钮
+                    const saveBtn = document.getElementById(`save-permissions-${username}`);
+                    if (saveBtn) {
+                        saveBtn.style.display = 'none';
+                    }
+                } else {
+                    throw new Error(result.msg || '权限更新失败');
+                }
+            } catch (error) {
+                console.error('保存权限失败:', error);
+                // 提供更详细的错误信息
+                let errorMessage = error.message;
+                if (error.message.includes('401')) {
+                    errorMessage = '认证失败，请重新登录后再试';
+                    // 可能需要重新登录
+                    setTimeout(() => {
+                        logout();
+                    }, 3000);
+                }
+                
+                alert('保存权限失败: ' + errorMessage);
+            }
+        }
+
+        // 修改用户管理页面的表格部分
         function loadContent(menuId, event) {
             const contentArea = document.getElementById('contentArea');
             document.querySelectorAll('.nav-link').forEach(link => {
@@ -286,9 +414,19 @@
                 event.target.classList.add('active');
             }
             
+            // 在 loadContent 函数中的用户管理部分
             if (menuId === 'user-management') {
                 api.get(config.apiEndpoints.users)
-                    .then(users => {
+                    .then(async users => {
+                        // 获取每个用户的权限
+                        const usersWithPermissions = await Promise.all(users.map(async user => {
+                            if (!user.is_admin) {
+                                const response = await api.get(`/api/users/${user.username}/permissions`);
+                                return { ...user, permissions: response };
+                            }
+                            return user;
+                        }));
+            
                         contentArea.innerHTML = `
                             <div class="card mb-4">
                                 <div class="card-header">
@@ -320,18 +458,47 @@
                                     <table class="table">
                                         <thead>
                                             <tr>
-                                                <th>用户名</th>
-                                                <th>角色</th>
-                                                <th>操作</th>
+                                                <td>用户名</td>
+                                                <td>角色</td>
+                                                <td>重置密码</td>
+                                                ${menuItems.filter(item => !item.adminOnly).map(item => 
+                                                    `<td>${item.title}</td>`
+                                                ).join('')}
+                                                <td>操作</td>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            ${users.map(user => `
+                                            ${usersWithPermissions.map(user => `
                                                 <tr>
                                                     <td>${user.username}</td>
                                                     <td>${user.is_admin ? '管理员' : '普通用户'}</td>
                                                     <td>
-                                                        <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">重置密码</button>
+                                                        <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.username}')">
+                                                            重置密码
+                                                        </button>
+                                                    </td>
+                                                    ${!user.is_admin ? menuItems.filter(item => !item.adminOnly).map(item => `
+                                                        <td>
+                                                            <div class="custom-control custom-checkbox">
+                                                                <input type="checkbox" 
+                                                                    class="custom-control-input" 
+                                                                    id="${user.username}_${item.id}"
+                                                                    ${user.permissions && user.permissions[item.id] ? 'checked' : ''}
+                                                                    onchange="trackPermissionChange('${user.username}', '${item.id}', this.checked)">
+                                                                <label class="custom-control-label" for="${user.username}_${item.id}"></label>
+                                                            </div>
+                                                        </td>
+                                                    `).join('') : menuItems.filter(item => !item.adminOnly).map(() => `
+                                                        <td>管理员</td>
+                                                    `).join('')}
+                                                    <td>
+                                                        ${!user.is_admin ? 
+                                                            `<button id="save-permissions-${user.username}" class="btn btn-sm btn-success" 
+                                                                style="display: none;" 
+                                                                onclick="savePermissions('${user.username}')">
+                                                                保存权限
+                                                            </button>` 
+                                                            : ''}
                                                         ${user.username !== 'admin' ? 
                                                             `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')">删除</button>` 
                                                             : ''}
