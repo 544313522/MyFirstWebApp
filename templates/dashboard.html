@@ -174,7 +174,7 @@
                     console.error('API PUT请求错误:', error);
                     throw error;
                 }
-            },  // 这里缺少了一个逗号
+            },  // 添加了逗号
 
             async delete(url) {
                 const response = await fetch(url, {
@@ -673,6 +673,9 @@
                     // 初始化蛇
                     resetGame();
                     
+                    // 设置按键控制
+                    setupKeyControls();
+                    
                     // 按钮事件监听
                     document.getElementById('start-btn').addEventListener('click', startGame);
                     document.getElementById('pause-btn').addEventListener('click', togglePause);
@@ -680,29 +683,50 @@
                 };
                 
                 p.draw = function() {
-                    p.background(51);
+                    // 绘制深色背景
+                    p.background(40);
+                    
+                    // 绘制网格
+                    p.stroke(60);
+                    p.strokeWeight(0.5);
+                    for (let i = 0; i <= cols; i++) {
+                        p.line(i * cellSize, 0, i * cellSize, p.height);
+                    }
+                    for (let i = 0; i <= rows; i++) {
+                        p.line(0, i * cellSize, p.width, i * cellSize);
+                    }
                     
                     if (gameStarted && !gamePaused) {
-                        // 移动蛇
                         moveSnake();
-                        
-                        // 检查是否吃到食物
                         if (snake[0].x === food.x && snake[0].y === food.y) {
                             eatFood();
                         }
-                        
-                        // 检查碰撞
                         checkCollision();
                     }
                     
-                    // 绘制食物
-                    p.fill(255, 0, 0);
-                    p.rect(food.x * cellSize, food.y * cellSize, cellSize, cellSize);
+                    // 绘制食物 - 添加脉动效果
+                    let foodSize = cellSize * (0.8 + 0.2 * Math.sin(p.frameCount * 0.1));
+                    let foodX = food.x * cellSize + cellSize/2;
+                    let foodY = food.y * cellSize + cellSize/2;
+                    p.noStroke();
+                    // 绘制食物光晕
+                    p.fill(255, 0, 0, 50);
+                    p.circle(foodX, foodY, foodSize * 1.5);
+                    // 绘制食物主体
+                    p.fill(255, 50, 50);
+                    p.circle(foodX, foodY, foodSize);
                     
-                    // 绘制蛇
-                    p.fill(0, 255, 0);
-                    for (let i = 0; i < snake.length; i++) {
-                        p.rect(snake[i].x * cellSize, snake[i].y * cellSize, cellSize, cellSize);
+                    // 绘制蛇 - 使用抽取的函数
+                    drawSnake();
+                    
+                    // 显示游戏状态
+                    p.fill(255);
+                    p.textSize(20);
+                    p.textAlign(p.LEFT, p.TOP);
+                    if (!gameStarted) {
+                        p.text('按空格键或点击开始按钮开始游戏', 10, 10);
+                    } else if (gamePaused) {
+                        p.text('游戏暂停', 10, 10);
                     }
                 };
                 
@@ -784,14 +808,18 @@
                     
                     // 检查是否撞墙
                     if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows) {
-                        gameOver();
+                        if (gameStarted) {  // 只有在游戏进行中才触发游戏结束
+                            gameOver();
+                        }
                         return;
                     }
                     
                     // 检查是否撞到自己
                     for (let i = 1; i < snake.length; i++) {
                         if (head.x === snake[i].x && head.y === snake[i].y) {
-                            gameOver();
+                            if (gameStarted) {  // 只有在游戏进行中才触发游戏结束
+                                gameOver();
+                            }
                             return;
                         }
                     }
@@ -799,8 +827,116 @@
                 
                 // 游戏结束
                 function gameOver() {
+                    // 如果游戏已经结束，不要重复执行
+                    if (!gameStarted) return;
+                    
+                    // 先保存当前分数，避免被重置
+                    const finalScore = score;
+                    
+                    // 设置游戏状态
                     gameStarted = false;
-                    alert(`游戏结束！你的得分是: ${score}`);
+                    gamePaused = false;
+                    
+                    // 防止在闪烁过程中按键重新开始游戏
+                    p.keyPressed = function() {};
+                    
+                    // 添加视觉反馈 - 闪烁效果
+                    let flashCount = 0;
+                    const flashInterval = setInterval(() => {
+                        p.background(flashCount % 2 === 0 ? 100 : 40);
+                        drawSnake();
+                        flashCount++;
+                        if (flashCount > 5) {
+                            clearInterval(flashInterval);
+                            
+                            // 显示得分
+                            setTimeout(() => {
+                                // 重置游戏状态
+                                snake = [{ x: p.floor(cols / 2), y: p.floor(rows / 2) }];
+                                direction = 'RIGHT';
+                                generateFood();
+                                score = 0;
+                                speed = 10;
+                                p.frameRate(speed);
+                                document.getElementById('score').textContent = score;
+                                document.getElementById('pause-btn').textContent = '暂停';
+                                
+                                // 恢复按键功能
+                                setupKeyControls();
+                                
+                                // 显示得分提示
+                                alert(`游戏结束！你的得分是: ${finalScore}`);
+                                
+                                // 高亮开始按钮
+                                const startBtn = document.getElementById('start-btn');
+                                startBtn.classList.add('btn-lg');
+                                startBtn.focus();
+                                
+                                // 2秒后恢复按钮正常大小
+                                setTimeout(() => {
+                                    startBtn.classList.remove('btn-lg');
+                                }, 2000);
+                            }, 100);
+                        }
+                    }, 100);
+                }
+                
+                // 设置按键控制
+                function setupKeyControls() {
+                    p.keyPressed = function() {
+                        if (!gameStarted) {
+                            startGame();
+                            return;
+                        }
+                        
+                        if (p.keyCode === p.LEFT_ARROW || p.key === 'a' || p.key === 'A') {
+                            if (direction !== 'RIGHT') direction = 'LEFT';
+                        } else if (p.keyCode === p.RIGHT_ARROW || p.key === 'd' || p.key === 'D') {
+                            if (direction !== 'LEFT') direction = 'RIGHT';
+                        } else if (p.keyCode === p.UP_ARROW || p.key === 'w' || p.key === 'W') {
+                            if (direction !== 'DOWN') direction = 'UP';
+                        } else if (p.keyCode === p.DOWN_ARROW || p.key === 's' || p.key === 'S') {
+                            if (direction !== 'UP') direction = 'DOWN';
+                        } else if (p.key === ' ') {
+                            togglePause();
+                        }
+                    };
+                }
+                
+                // 抽取绘制蛇的函数，以便在游戏结束时重用
+                function drawSnake() {
+                    p.noStroke();
+                    for (let i = 0; i < snake.length; i++) {
+                        // 计算渐变色
+                        let greenValue = p.map(i, 0, snake.length, 255, 100);
+                        let blueValue = p.map(i, 0, snake.length, 100, 255);
+                        p.fill(0, greenValue, blueValue);
+                        
+                        // 绘制圆角矩形作为蛇身
+                        let x = snake[i].x * cellSize;
+                        let y = snake[i].y * cellSize;
+                        p.rect(x + 1, y + 1, cellSize - 2, cellSize - 2, 5);
+                        
+                        // 为蛇头添加特殊效果
+                        if (i === 0) {
+                            // 蛇眼
+                            p.fill(255);
+                            let eyeSize = cellSize / 4;
+                            if (direction === 'RIGHT') {
+                                p.circle(x + cellSize * 3/4, y + cellSize/3, eyeSize);
+                                p.circle(x + cellSize * 3/4, y + cellSize * 2/3, eyeSize);
+                            } else if (direction === 'LEFT') {
+                                p.circle(x + cellSize/4, y + cellSize/3, eyeSize);
+                                p.circle(x + cellSize/4, y + cellSize * 2/3, eyeSize);
+                            } else if (direction === 'UP') {
+                                p.circle(x + cellSize/3, y + cellSize/4, eyeSize);
+                                p.circle(x + cellSize * 2/3, y + cellSize/4, eyeSize);
+                            } else if (direction === 'DOWN') {
+                                p.circle(x + cellSize/3, y + cellSize * 3/4, eyeSize);
+                                p.circle(x + cellSize * 2/3, y + cellSize * 3/4, eyeSize);
+                            }
+                        }
+                    }
                 }
                 
                 // 开始游戏
@@ -831,6 +967,9 @@
                     p.frameRate(speed);
                     document.getElementById('score').textContent = score;
                     document.getElementById('pause-btn').textContent = '暂停';
+                    
+                    // 恢复按键功能
+                    setupKeyControls();
                 }
             });
         }
